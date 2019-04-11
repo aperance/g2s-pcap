@@ -11,7 +11,7 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
-func packetCapture(result chan<- string) {
+func packetCapture(result chan<- HttpPacket) {
 	var (
 		device       string        = "en0"
 		snapshot_len int32         = 1024
@@ -35,29 +35,36 @@ func packetCapture(result chan<- string) {
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 
-	for packet := range packetSource.Packets() {
+	for packetData := range packetSource.Packets() {
 
-		applicationLayer := packet.ApplicationLayer()
+		applicationLayer := packetData.ApplicationLayer()
 		if applicationLayer != nil {
 			if strings.Contains(string(applicationLayer.Payload()), "HTTP") {
 
-				ipLayer := packet.Layer(layers.LayerTypeIPv4)
+				var httpPacket HttpPacket
+
+				ipLayer := packetData.Layer(layers.LayerTypeIPv4)
 				if ipLayer != nil {
 					ip, _ := ipLayer.(*layers.IPv4)
-					fmt.Printf("%s packet from %s to %s\n", ip.Protocol, ip.SrcIP, ip.DstIP)
+					httpPacket.source = fmt.Sprintf("%s", ip.SrcIP)
+					httpPacket.destination = fmt.Sprintf("%s", ip.DstIP)
+					httpPacket.protocol = fmt.Sprintf("%s", ip.Protocol)
 				}
 
-				tcpLayer := packet.Layer(layers.LayerTypeTCP)
+				tcpLayer := packetData.Layer(layers.LayerTypeTCP)
 				if tcpLayer != nil {
 					tcp, _ := tcpLayer.(*layers.TCP)
-					fmt.Printf("Port %d to %d\n", tcp.SrcPort, tcp.DstPort)
+					httpPacket.source = fmt.Sprintf("%s:%s", httpPacket.source, tcp.SrcPort)
+					httpPacket.destination = fmt.Sprintf("%s:%s", httpPacket.destination, tcp.DstPort)
 				}
 
-				result <- string(applicationLayer.Payload())
+				httpPacket.payload = string(applicationLayer.Payload())
+
+				result <- httpPacket
 			}
 		}
 
-		if err := packet.ErrorLayer(); err != nil {
+		if err := packetData.ErrorLayer(); err != nil {
 			fmt.Println("Error decoding some part of the packet:", err)
 		}
 	}

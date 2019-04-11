@@ -5,15 +5,24 @@ import (
 	"net/http"
 )
 
-func main() {
-	packets := make(chan string)
+type HttpPacket struct {
+	source      string
+	destination string
+	protocol    string
+	payload     string
+}
 
-	go packetCapture(packets)
+func main() {
+	receivedPackets := make(chan HttpPacket)
+
+	go packetCapture(receivedPackets)
 	fmt.Println("Capturing HTTP packets...")
 	go webSocketServer()
 	fmt.Println("Listening on port 3000...")
 	for {
-		fmt.Printf("\n%s\n\n", <-packets)
+		receivedPacket := <-receivedPackets
+		fmt.Printf("%s packet from %s to %s\n", receivedPacket.protocol, receivedPacket.source, receivedPacket.destination)
+		fmt.Printf("\n%s\n\n", receivedPacket.payload)
 	}
 }
 
