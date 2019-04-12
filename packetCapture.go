@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -21,7 +22,15 @@ var (
 	err          error
 )
 
-func packetCapture(result chan<- HttpPacket) {
+type HttpPacket struct {
+	Source      string `json:"src"`
+	Destination string `json:"dst"`
+	Protocol    string `json:"type"`
+	Payload     string `json:"payload"`
+}
+
+func packetCapture(result chan<- []byte) {
+	log.Println("Capturing HTTP packets...")
 
 	handle, err = pcap.OpenLive(device, snapshot_len, promiscuous, timeout)
 	if err != nil {
@@ -67,7 +76,12 @@ func packetCapture(result chan<- HttpPacket) {
 				httpPacket.Protocol = fmt.Sprintf("%s", ip.Protocol)
 				httpPacket.Payload = string(applicationLayer.Payload())
 
-				result <- httpPacket
+				msg, err := json.Marshal(httpPacket)
+				if err != nil {
+					return
+				}
+
+				result <- msg
 			}
 		}
 
