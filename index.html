@@ -1,0 +1,15 @@
+<pre id="output"></pre>
+<script>
+  var output = document.getElementById("output");
+  var socket = new WebSocket("ws://localhost:3000/ws");
+
+  socket.onopen = function() {
+    output.innerHTML += "Status: Connected\n\n";
+  };
+
+  socket.onmessage = function(e) {
+    const { src, dst, type, payload } = JSON.parse(e.data);
+    const str = `${type} packet from ${src} to ${dst}\n\n${payload}\n\n`;
+    output.innerHTML += str;
+  };
+</script>

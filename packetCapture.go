@@ -11,16 +11,17 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
+var (
+	device       string        = "en0"
+	snapshot_len int32         = 1024
+	promiscuous  bool          = false
+	timeout      time.Duration = 30 * time.Second
+	filter       string        = "tcp or udp"
+	handle       *pcap.Handle
+	err          error
+)
+
 func packetCapture(result chan<- HttpPacket) {
-	var (
-		device       string        = "en0"
-		snapshot_len int32         = 1024
-		promiscuous  bool          = false
-		timeout      time.Duration = 30 * time.Second
-		filter       string        = "tcp or udp"
-		handle       *pcap.Handle
-		err          error
-	)
 
 	handle, err = pcap.OpenLive(device, snapshot_len, promiscuous, timeout)
 	if err != nil {
@@ -44,21 +45,27 @@ func packetCapture(result chan<- HttpPacket) {
 				var httpPacket HttpPacket
 
 				ipLayer := packetData.Layer(layers.LayerTypeIPv4)
-				if ipLayer != nil {
-					ip, _ := ipLayer.(*layers.IPv4)
-					httpPacket.source = fmt.Sprintf("%s", ip.SrcIP)
-					httpPacket.destination = fmt.Sprintf("%s", ip.DstIP)
-					httpPacket.protocol = fmt.Sprintf("%s", ip.Protocol)
+				if ipLayer == nil {
+					return
 				}
+				ip, _ := ipLayer.(*layers.IPv4)
 
 				tcpLayer := packetData.Layer(layers.LayerTypeTCP)
 				if tcpLayer != nil {
 					tcp, _ := tcpLayer.(*layers.TCP)
-					httpPacket.source = fmt.Sprintf("%s:%s", httpPacket.source, tcp.SrcPort)
-					httpPacket.destination = fmt.Sprintf("%s:%s", httpPacket.destination, tcp.DstPort)
+					httpPacket.Source = fmt.Sprintf("%s:%s", ip.SrcIP, tcp.SrcPort)
+					httpPacket.Destination = fmt.Sprintf("%s:%s", ip.DstIP, tcp.DstPort)
 				}
 
-				httpPacket.payload = string(applicationLayer.Payload())
+				udpLayer := packetData.Layer(layers.LayerTypeUDP)
+				if udpLayer != nil {
+					udp, _ := udpLayer.(*layers.UDP)
+					httpPacket.Source = fmt.Sprintf("%s:%s", ip.SrcIP, udp.SrcPort)
+					httpPacket.Destination = fmt.Sprintf("%s:%s", ip.DstIP, udp.DstPort)
+				}
+
+				httpPacket.Protocol = fmt.Sprintf("%s", ip.Protocol)
+				httpPacket.Payload = string(applicationLayer.Payload())
 
 				result <- httpPacket
 			}
