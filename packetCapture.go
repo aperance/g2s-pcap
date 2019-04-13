@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/google/gopacket"
@@ -17,7 +16,7 @@ var (
 	snapshot_len int32         = 1024
 	promiscuous  bool          = false
 	timeout      time.Duration = 30 * time.Second
-	filter       string        = "tcp or udp"
+	filter       string        = "tcp port 80 or udp"
 	handle       *pcap.Handle
 	err          error
 )
@@ -27,6 +26,7 @@ type HttpPacket struct {
 	Destination string `json:"dst"`
 	Protocol    string `json:"type"`
 	Payload     string `json:"payload"`
+	Push        bool   `json:"push"`
 }
 
 func packetCapture(result chan<- []byte) {
@@ -49,14 +49,11 @@ func packetCapture(result chan<- []byte) {
 
 		applicationLayer := packetData.ApplicationLayer()
 		if applicationLayer != nil {
-			if strings.Contains(string(applicationLayer.Payload()), "HTTP") {
 
-				var httpPacket HttpPacket
+			var httpPacket HttpPacket
 
-				ipLayer := packetData.Layer(layers.LayerTypeIPv4)
-				if ipLayer == nil {
-					return
-				}
+			ipLayer := packetData.Layer(layers.LayerTypeIPv4)
+			if ipLayer != nil {
 				ip, _ := ipLayer.(*layers.IPv4)
 
 				tcpLayer := packetData.Layer(layers.LayerTypeTCP)
@@ -64,6 +61,7 @@ func packetCapture(result chan<- []byte) {
 					tcp, _ := tcpLayer.(*layers.TCP)
 					httpPacket.Source = fmt.Sprintf("%s:%s", ip.SrcIP, tcp.SrcPort)
 					httpPacket.Destination = fmt.Sprintf("%s:%s", ip.DstIP, tcp.DstPort)
+					httpPacket.Push = tcp.PSH
 				}
 
 				udpLayer := packetData.Layer(layers.LayerTypeUDP)
@@ -71,6 +69,7 @@ func packetCapture(result chan<- []byte) {
 					udp, _ := udpLayer.(*layers.UDP)
 					httpPacket.Source = fmt.Sprintf("%s:%s", ip.SrcIP, udp.SrcPort)
 					httpPacket.Destination = fmt.Sprintf("%s:%s", ip.DstIP, udp.DstPort)
+					httpPacket.Push = true
 				}
 
 				httpPacket.Protocol = fmt.Sprintf("%s", ip.Protocol)
@@ -82,7 +81,9 @@ func packetCapture(result chan<- []byte) {
 				}
 
 				result <- msg
+
 			}
+
 		}
 
 		if err := packetData.ErrorLayer(); err != nil {
