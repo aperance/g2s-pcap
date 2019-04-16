@@ -11,7 +11,6 @@ import (
 )
 
 var (
-	device       string        = "en0"
 	snapshot_len int32         = 1024
 	promiscuous  bool          = false
 	timeout      time.Duration = 30 * time.Second
@@ -26,7 +25,7 @@ type HttpPacket struct {
 	Payload     string `json:"payload"`
 }
 
-func packetCapture(port string, result chan<- *HttpPacket) {
+func packetCapture(device string, port string, result chan<- *HttpPacket) {
 
 	buffer := make(map[string]string)
 
