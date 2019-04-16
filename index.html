@@ -11,7 +11,7 @@
     console.log(e.data);
 
     const { src, dst, type, payload } = JSON.parse(e.data);
-    const str = `${type} packet from ${src} to ${dst}\n\n${payload}\n\n`;
+    const str = `Captured packet from ${src} to ${dst}\n\n${payload}\n\n`;
     output.innerHTML += str;
   };
 </script>

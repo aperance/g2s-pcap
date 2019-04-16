@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -16,15 +17,20 @@ func main() {
 		clients:     make(map[*Client]bool),
 		subscribe:   make(chan *Client),
 		unsubscribe: make(chan *Client),
-		broadcast:   make(chan []byte),
+		broadcast:   make(chan *HttpPacket),
 	}
 	go coordinator.run()
-
 	go packetCapture(coordinator.broadcast)
+
+	log.Println("Capturing HTTP packets...")
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		conn, _ := upgrader.Upgrade(w, r, nil)
-		client := &Client{conn: conn, coordinator: coordinator, send: make(chan []byte, 25600)}
+		client := &Client{
+			conn:        conn,
+			coordinator: coordinator,
+			send:        make(chan *HttpPacket),
+		}
 		client.run()
 	})
 
