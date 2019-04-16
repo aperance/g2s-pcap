@@ -15,7 +15,7 @@ var (
 	snapshot_len int32         = 1024
 	promiscuous  bool          = false
 	timeout      time.Duration = 30 * time.Second
-	filter       string        = "tcp port 80"
+	filter       string        = "tcp port"
 	handle       *pcap.Handle
 	err          error
 )
@@ -26,7 +26,7 @@ type HttpPacket struct {
 	Payload     string `json:"payload"`
 }
 
-func packetCapture(result chan<- *HttpPacket) {
+func packetCapture(port string, result chan<- *HttpPacket) {
 
 	buffer := make(map[string]string)
 
@@ -36,12 +36,14 @@ func packetCapture(result chan<- *HttpPacket) {
 	}
 	defer handle.Close()
 
-	err = handle.SetBPFFilter(filter)
+	err = handle.SetBPFFilter("tcp port " + port)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+
+	log.Printf("Capturing HTTP packets on port %s...", port)
 
 	for packetData := range packetSource.Packets() {
 		if err := packetData.ErrorLayer(); err != nil {

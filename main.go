@@ -1,16 +1,11 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/websocket"
 )
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
 
 func main() {
 	coordinator := &ClientCoordinator{
@@ -19,13 +14,22 @@ func main() {
 		unsubscribe: make(chan *Client),
 		broadcast:   make(chan *HttpPacket),
 	}
-	go coordinator.run()
-	go packetCapture(coordinator.broadcast)
 
-	log.Println("Capturing HTTP packets...")
+	go coordinator.run()
+
+	fmt.Print("Enter port: ")
+	var port string
+	_, err = fmt.Scanln(&port)
+
+	go packetCapture(port, coordinator.broadcast)
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		var upgrader = websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+		}
 		conn, _ := upgrader.Upgrade(w, r, nil)
+
 		client := &Client{
 			conn:        conn,
 			coordinator: coordinator,
