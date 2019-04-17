@@ -66,7 +66,7 @@ func packetCapture(device string, port string, result chan<- *HttpPacket) {
 		}
 
 		key := fmt.Sprintf("%s:%s|%s:%s", ip.SrcIP, tcp.SrcPort, ip.DstIP, tcp.DstPort)
-		buffer[key] = buffer[key] + "_@_" + string(applicationLayer.Payload())
+		buffer[key] = buffer[key] + string(applicationLayer.Payload())
 
 		if tcp.PSH {
 			httpPacket := HttpPacket{

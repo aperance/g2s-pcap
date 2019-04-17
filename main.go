@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -39,7 +40,13 @@ func main() {
 			coordinator: coordinator,
 			send:        make(chan *HttpPacket),
 		}
-		client.run()
+
+		go client.read()
+		go client.write()
+
+		client.coordinator.subscribe <- client
+
+		log.Println("Websocket client connected")
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

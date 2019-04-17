@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 
 	"github.com/gorilla/websocket"
@@ -13,23 +12,27 @@ type Client struct {
 	send        chan *HttpPacket
 }
 
-func (client *Client) run() {
-	log.Println("Websocket client connected")
-	client.coordinator.subscribe <- client
+func (client *Client) read() {
+	defer func() {
+		client.coordinator.unsubscribe <- client
+		close(client.send)
+		client.conn.Close()
+	}()
 
 	for {
-		httpPacket := <-client.send
-
-		message, err := json.Marshal(httpPacket)
+		_, _, err := client.conn.ReadMessage()
 		if err != nil {
+			log.Println(err)
 			return
 		}
+	}
+}
 
-		err = client.conn.WriteMessage(websocket.TextMessage, message)
+func (client *Client) write() {
+	for {
+		err = client.conn.WriteJSON(<-client.send)
 		if err != nil {
-			log.Println("Websocket client disconnected")
-			client.conn.Close()
-			client.coordinator.unsubscribe <- client
+			log.Println(err)
 			return
 		}
 	}
@@ -52,7 +55,6 @@ func (coordinator *ClientCoordinator) run() {
 		case client := <-coordinator.unsubscribe:
 			if _, ok := coordinator.clients[client]; ok {
 				delete(coordinator.clients, client)
-				close(client.send)
 			}
 
 		case httpPacket := <-coordinator.broadcast:
