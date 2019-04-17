@@ -23,8 +23,18 @@ func main() {
 		var upgrader = websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
 		}
-		conn, _ := upgrader.Upgrade(w, r, nil)
+
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		log.Println("Websocket client connected")
 
 		client := &Client{
 			conn:        conn,
@@ -36,12 +46,10 @@ func main() {
 		go client.write()
 
 		client.coordinator.subscribe <- client
-
-		log.Println("Websocket client connected")
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "index.html")
+		http.ServeFile(w, r, "old_index.html")
 	})
 
 	http.ListenAndServe(":3000", nil)
