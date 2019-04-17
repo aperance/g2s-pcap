@@ -8,10 +8,10 @@
   };
 
   socket.onmessage = function(e) {
-    console.log(e.data);
-
-    const { src, dst, type, payload } = JSON.parse(e.data);
+    let { src, dst, type, payload } = JSON.parse(e.data);
+	  payload = payload.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+	  console.log(payload);
     const str = `Captured packet from ${src} to ${dst}\n\n${payload}\n\n`;
-    output.innerHTML += str;
+    output.innerHTML += str
   };
 </script>
