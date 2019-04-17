@@ -13,11 +13,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var (
-	port   string
-	device string
-)
-
 type HttpPacket struct {
 	Source      string `json:"src"`
 	Destination string `json:"dst"`
