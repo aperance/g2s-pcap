@@ -11,7 +11,7 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-bin
-dist
-.cache
-node_modules
+server/bin
+client/dist
+client/.cache
+client/node_modules
