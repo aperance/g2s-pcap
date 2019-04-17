@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	snapshot_len int32         = 1024
+	snapshot_len int32         = 2048
 	promiscuous  bool          = false
 	timeout      time.Duration = 30 * time.Second
 	filter       string        = "tcp port"
