@@ -1,17 +1,10 @@
-<pre id="output"></pre>
-<script>
-  var output = document.getElementById("output");
-  var socket = new WebSocket("ws://localhost:3000/ws");
-
-  socket.onopen = function() {
-    output.innerHTML += "Status: Connected\n\n";
-  };
-
-  socket.onmessage = function(e) {
-    let { src, dst, type, payload } = JSON.parse(e.data);
-	  payload = payload.replace(/</g,'&lt;').replace(/>/g,'&gt;');
-	  console.log(payload);
-    const str = `Captured packet from ${src} to ${dst}\n\n${payload}\n\n`;
-    output.innerHTML += str
-  };
-</script>
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>React starter app</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="index.js"></script>
+  </body>
+</html>
