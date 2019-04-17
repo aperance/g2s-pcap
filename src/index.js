@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import ReactDOM from "react-dom";
+import { parseString } from "xml2js";
 
 function App() {
   const [captureStream, setCaptureStream] = useState([]);
@@ -8,14 +9,19 @@ function App() {
 
   useEffect(() => {
     if (!socket.current || retry) {
-      const ws = new WebSocket("ws://localhost:3000/ws");
+      const ws = new WebSocket("ws://10.91.1.46:3000/ws");
 
       ws.onopen = () => console.log("Connection established");
       ws.onmessage = message => {
         try {
           const obj = JSON.parse(message.data);
           console.log(obj);
-          const xml = obj.payload.split("\r\n", 2)[1];
+          const xml = obj.payload
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/\t/g, "  ")
+            .split(/\s*<\/*s(oap-envelope)*:Body.*?>\s*/g)[2];
+          if (xml === undefined) return;
           setCaptureStream(z => z.concat({ ...obj, xml }));
         } catch (err) {
           console.error(err);
@@ -33,7 +39,7 @@ function App() {
 
   return (
     <div>
-      <pre>{captureStream.map(x => x.payload)}</pre>
+      <pre>{captureStream.map(x => x.xml + "\n\n")}</pre>
     </div>
   );
 }
