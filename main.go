@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
@@ -18,15 +17,7 @@ func main() {
 
 	go coordinator.run()
 
-	fmt.Print("Enter device name: ")
-	var device string
-	_, err = fmt.Scanln(&device)
-
-	fmt.Print("Enter port: ")
-	var port string
-	_, err = fmt.Scanln(&port)
-
-	go packetCapture(device, port, coordinator.broadcast)
+	go packetCapture(coordinator.broadcast)
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		var upgrader = websocket.Upgrader{

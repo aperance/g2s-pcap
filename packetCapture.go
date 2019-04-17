@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"time"
@@ -15,6 +16,8 @@ var (
 	promiscuous  bool          = false
 	timeout      time.Duration = 30 * time.Second
 	filter       string        = "tcp port"
+	port         string
+	device       string
 	handle       *pcap.Handle
 	err          error
 )
@@ -25,9 +28,13 @@ type HttpPacket struct {
 	Payload     string `json:"payload"`
 }
 
-func packetCapture(device string, port string, result chan<- *HttpPacket) {
+func packetCapture(result chan<- *HttpPacket) {
 
 	buffer := make(map[string]string)
+
+	flag.StringVar(&port, "p", "", "port number")
+	flag.StringVar(&device, "d", "", "interface device name")
+	flag.Parse()
 
 	handle, err = pcap.OpenLive(device, snapshot_len, promiscuous, timeout)
 	if err != nil {
