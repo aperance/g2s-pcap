@@ -15,14 +15,20 @@ function App() {
       ws.onmessage = message => {
         try {
           const obj = JSON.parse(message.data);
-          console.log(obj);
-          const xml = obj.payload
+
+          const xmlString = obj.payload
             .replace(/&lt;/g, "<")
             .replace(/&gt;/g, ">")
             .replace(/\t/g, "  ")
-            .split(/\s*<\/*s(oap-envelope)*:Body.*?>\s*/g)[2];
-          if (xml === undefined) return;
-          setCaptureStream(z => z.concat({ ...obj, xml }));
+            // .split(/\s*<\/*s(oap-envelope)*:Body.*?>\s*/g)[2]
+            .split(/\s*<\/*(g2s:)*g2sMessage.*?>\s*/g)[2];
+          if (xmlString === undefined) return;
+
+          parseString(xmlString, { explicitArray: false }, (err, xmlObj) => {
+            const newObj = { ...obj, xmlString, xmlObj };
+            console.log(newObj);
+            setCaptureStream(x => x.concat(newObj));
+          });
         } catch (err) {
           console.error(err);
           ws.onclose = null;
@@ -39,7 +45,10 @@ function App() {
 
   return (
     <div>
-      <pre>{captureStream.map(x => x.xml + "\n\n")}</pre>
+      <pre>
+        {/* {captureStream.map(x => x.xmlString + "\n\n")} */}
+        {captureStream.map(x => JSON.stringify(x.xmlObj, null, 2) + "\n\n")}
+      </pre>
     </div>
   );
 }
