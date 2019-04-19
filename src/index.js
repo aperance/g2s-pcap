@@ -3,28 +3,26 @@ import ReactDOM from "react-dom";
 import { xml2js } from "xml-js";
 import { AutoSizer, List } from "react-virtualized";
 import { useWebsocket } from "./useWebsocket";
+import { Message } from "./Message";
 
 function App() {
   const [state, dispatch] = useReducer(reducer, []);
   useWebsocket(dispatch);
 
-  const rowRenderer = ({ key, index, style }) => {
-    return (
+  const rowRenderer = ({ key, index, style }) =>
+    state[index].obj && (
       <div key={key} style={style}>
-        {state[index].obj && (
-          <pre>{JSON.stringify(state[index].obj, null, 2)}</pre>
-        )}
+        <Message data={state[index].obj} />
       </div>
     );
-  };
 
   const getRowHeight = ({ index }) =>
     state[index].obj
-      ? 15 * (2 + JSON.stringify(state[index].obj, null, 2).match(/\n/g).length)
+      ? 20 * JSON.stringify(state[index].obj, null, 2).match(/\n/g).length
       : 0;
 
   return (
-    <div style={{ height: "90vh", width: "90vw" }}>
+    <div style={{ height: "99vh", width: "99vw" }}>
       <AutoSizer>
         {({ height, width }) => (
           <List
@@ -54,7 +52,7 @@ function reducer(state, action) {
         if (xml === undefined) return [...state];
         console.log(xml);
 
-        const obj = xml2js(xml, { compact: true });
+        const obj = xml2js(xml, { compact: true, alwaysArray: false });
         console.log(obj);
 
         return [...state, { ...message, xml, obj }];
