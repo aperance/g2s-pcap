@@ -1,41 +1,36 @@
 import React, { useReducer } from "react";
 import ReactDOM from "react-dom";
 import { xml2js } from "xml-js";
-import { AutoSizer, List } from "react-virtualized";
-import { useWebsocket } from "./useWebsocket";
-import { Message } from "./Message";
+import { MessageList } from "./components/MessageList";
 
 function App() {
   const [state, dispatch] = useReducer(reducer, []);
   useWebsocket(dispatch);
 
-  const rowRenderer = ({ key, index, style }) =>
-    state[index].obj && (
-      <div key={key} style={style}>
-        <Message data={state[index].obj} />
-      </div>
-    );
-
-  const getRowHeight = ({ index }) =>
-    state[index].obj
-      ? 20 * JSON.stringify(state[index].obj, null, 2).match(/\n/g).length
-      : 0;
-
   return (
-    <div style={{ height: "99vh", width: "99vw" }}>
-      <AutoSizer>
-        {({ height, width }) => (
-          <List
-            width={width}
-            height={height}
-            rowCount={state.length}
-            rowHeight={getRowHeight}
-            rowRenderer={rowRenderer}
-          />
-        )}
-      </AutoSizer>
+    <div style={{ height: "97vh", width: "97vw" }}>
+      <MessageList state={state} />
     </div>
   );
+}
+
+function useWebsocket(dispatch) {
+  const [retry, setRetry] = useState(false);
+  const socket = useRef(null);
+
+  useEffect(() => {
+    if (!socket.current || retry) {
+      const ws = new WebSocket("ws://10.91.1.46:3000/ws");
+
+      ws.onopen = () => console.log("Connection established");
+      ws.onerror = () => console.log("Connection Error");
+      ws.onclose = () => setTimeout(() => setRetry(true), 5000);
+      ws.onmessage = e => dispatch({ type: "push", data: e.data });
+
+      setRetry(false);
+      socket.current = ws;
+    }
+  }, [retry]);
 }
 
 function reducer(state, action) {
