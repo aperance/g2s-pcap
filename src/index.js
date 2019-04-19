@@ -1,56 +1,72 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useReducer } from "react";
 import ReactDOM from "react-dom";
-import { parseString } from "xml2js";
+import { xml2js } from "xml-js";
+import { AutoSizer, List } from "react-virtualized";
+import { useWebsocket } from "./useWebsocket";
 
 function App() {
-  const [captureStream, setCaptureStream] = useState([]);
-  const [retry, setRetry] = useState(false);
-  const socket = useRef(null);
+  const [state, dispatch] = useReducer(reducer, []);
+  useWebsocket(dispatch);
 
-  useEffect(() => {
-    if (!socket.current || retry) {
-      const ws = new WebSocket("ws://10.91.1.46:3000/ws");
+  const rowRenderer = ({ key, index, style }) => {
+    return (
+      <div key={key} style={style}>
+        {state[index].obj && (
+          <pre>{JSON.stringify(state[index].obj, null, 2)}</pre>
+        )}
+      </div>
+    );
+  };
 
-      ws.onopen = () => console.log("Connection established");
-      ws.onmessage = message => {
-        try {
-          const obj = JSON.parse(message.data);
-
-          const xmlString = obj.payload
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
-            .replace(/\t/g, "  ")
-            // .split(/\s*<\/*s(oap-envelope)*:Body.*?>\s*/g)[2]
-            .split(/\s*<\/*(g2s:)*g2sMessage.*?>\s*/g)[2];
-          if (xmlString === undefined) return;
-
-          parseString(xmlString, { explicitArray: false }, (err, xmlObj) => {
-            const newObj = { ...obj, xmlString, xmlObj };
-            console.log(newObj);
-            setCaptureStream(x => x.concat(newObj));
-          });
-        } catch (err) {
-          console.error(err);
-          ws.onclose = null;
-          ws.close();
-        }
-      };
-      ws.onerror = () => console.log("Connection Error");
-      ws.onclose = () => setTimeout(() => setRetry(true), 5000);
-
-      setRetry(false);
-      socket.current = ws;
-    }
-  }, [retry]);
+  const getRowHeight = ({ index }) =>
+    state[index].obj
+      ? 15 * (2 + JSON.stringify(state[index].obj, null, 2).match(/\n/g).length)
+      : 0;
 
   return (
-    <div>
-      <pre>
-        {/* {captureStream.map(x => x.xmlString + "\n\n")} */}
-        {captureStream.map(x => JSON.stringify(x.xmlObj, null, 2) + "\n\n")}
-      </pre>
+    <div style={{ height: "90vh", width: "90vw" }}>
+      <AutoSizer>
+        {({ height, width }) => (
+          <List
+            width={width}
+            height={height}
+            rowCount={state.length}
+            rowHeight={getRowHeight}
+            rowRenderer={rowRenderer}
+          />
+        )}
+      </AutoSizer>
     </div>
   );
+}
+
+function reducer(state, action) {
+  switch (action.type) {
+    case "push":
+      try {
+        const message = JSON.parse(action.data);
+        console.log(message);
+
+        const xml = message.payload
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .split(/\s*<\/*(g2s:)*g2sMessage.*?>\s*/g)[2];
+        if (xml === undefined) return [...state];
+        console.log(xml);
+
+        const obj = xml2js(xml, { compact: true });
+        console.log(obj);
+
+        return [...state, { ...message, xml, obj }];
+      } catch (err) {
+        console.error(err);
+        return [...state];
+      }
+    case "clear":
+      return [];
+    default:
+      throw new Error();
+  }
 }
 
 var mountNode = document.getElementById("app");
