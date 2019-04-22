@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
@@ -10,16 +11,12 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/google/gopacket/tcpassembly"
+	"github.com/google/gopacket/tcpassembly/tcpreader"
 	"github.com/gorilla/websocket"
 )
 
-type HttpPacket struct {
-	Source      string `json:"src"`
-	Destination string `json:"dst"`
-	Payload     string `json:"payload"`
-}
-
-func packetCapture(result chan<- *HttpPacket) {
+func packetCapture(result chan<- *httpMessage) {
 	var port, device string
 	flag.StringVar(&port, "p", "", "port number")
 	flag.StringVar(&device, "d", "", "interface device name")
@@ -38,53 +35,78 @@ func packetCapture(result chan<- *HttpPacket) {
 
 	log.Printf("Capturing HTTP packets on port %s...", port)
 
-	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-	buffer := make(map[string]string)
+	streamFactory := &httpStreamFactory{result}
+	streamPool := tcpassembly.NewStreamPool(streamFactory)
+	assembler := tcpassembly.NewAssembler(streamPool)
 
-	for packetData := range packetSource.Packets() {
-		if err := packetData.ErrorLayer(); err != nil {
+	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	for packet := range packetSource.Packets() {
+		if err := packet.ErrorLayer(); err != nil {
 			log.Println("Error decoding some part of the packet:", err)
 			continue
 		}
-
-		ip, ok := packetData.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-		if !ok || ip == nil {
+		if packet.NetworkLayer() == nil || packet.TransportLayer() == nil ||
+			packet.TransportLayer().LayerType() != layers.LayerTypeTCP {
 			continue
 		}
 
-		tcp, ok := packetData.Layer(layers.LayerTypeTCP).(*layers.TCP)
-		if !ok || tcp == nil {
-			continue
-		}
-
-		applicationLayer := packetData.ApplicationLayer()
-		if applicationLayer == nil {
-			continue
-		}
-
-		key := fmt.Sprintf("%s:%s|%s:%s", ip.SrcIP, tcp.SrcPort, ip.DstIP, tcp.DstPort)
-		buffer[key] = buffer[key] + string(applicationLayer.Payload())
-
-		if tcp.PSH {
-			httpPacket := HttpPacket{
-				Source:      fmt.Sprintf("%s:%s", ip.SrcIP, tcp.SrcPort),
-				Destination: fmt.Sprintf("%s:%s", ip.DstIP, tcp.DstPort),
-				Payload:     buffer[key],
-			}
-			result <- &httpPacket
-
-			delete(buffer, key)
-		}
+		flow := packet.NetworkLayer().NetworkFlow()
+		tcp := packet.TransportLayer().(*layers.TCP)
+		assembler.Assemble(flow, tcp)
 	}
 }
 
-type Client struct {
-	conn        *websocket.Conn
-	coordinator *ClientCoordinator
-	send        chan *HttpPacket
+type httpMessage struct {
+	AddressFlow string `json:"ip"`
+	PortFlow    string `json:"port"`
+	Raw         string `json:"raw"`
+	Parsed      string `json:"payload"`
 }
 
-func (client *Client) read() {
+type httpStreamFactory struct {
+	result chan<- *httpMessage
+}
+
+type httpStream struct {
+	net, transport gopacket.Flow
+	r              tcpreader.ReaderStream
+	result         chan<- *httpMessage
+}
+
+func (h *httpStreamFactory) New(net, transport gopacket.Flow) tcpassembly.Stream {
+	hstream := &httpStream{
+		net:       net,
+		transport: transport,
+		r:         tcpreader.NewReaderStream(),
+		result:    h.result,
+	}
+	go hstream.run()
+
+	return &hstream.r
+}
+
+func (h *httpStream) run() {
+	req, err := ioutil.ReadAll(&h.r)
+	if err != nil {
+		tcpreader.DiscardBytesToEOF(&h.r)
+		log.Println("Error reading stream", h.net, h.transport, ":", err)
+	}
+
+	h.result <- &httpMessage{
+		AddressFlow: fmt.Sprintf("%s", h.net),
+		PortFlow:    fmt.Sprintf("%s", h.transport),
+		Raw:         string(req),
+		Parsed:      string(req),
+	}
+}
+
+type wsClient struct {
+	conn        *websocket.Conn
+	coordinator *wsCoordinator
+	send        chan *httpMessage
+}
+
+func (client *wsClient) read() {
 	defer func() {
 		client.coordinator.unsubscribe <- client
 		close(client.send)
@@ -100,7 +122,7 @@ func (client *Client) read() {
 	}
 }
 
-func (client *Client) write() {
+func (client *wsClient) write() {
 	for {
 		err := client.conn.WriteJSON(<-client.send)
 		if err != nil {
@@ -110,17 +132,16 @@ func (client *Client) write() {
 	}
 }
 
-type ClientCoordinator struct {
-	clients     map[*Client]bool
-	subscribe   chan *Client
-	unsubscribe chan *Client
-	broadcast   chan *HttpPacket
+type wsCoordinator struct {
+	clients     map[*wsClient]bool
+	subscribe   chan *wsClient
+	unsubscribe chan *wsClient
+	broadcast   chan *httpMessage
 }
 
-func (coordinator *ClientCoordinator) run() {
+func (coordinator *wsCoordinator) run() {
 	for {
 		select {
-
 		case client := <-coordinator.subscribe:
 			coordinator.clients[client] = true
 
@@ -129,20 +150,20 @@ func (coordinator *ClientCoordinator) run() {
 				delete(coordinator.clients, client)
 			}
 
-		case httpPacket := <-coordinator.broadcast:
+		case httpMessage := <-coordinator.broadcast:
 			for client := range coordinator.clients {
-				client.send <- httpPacket
+				client.send <- httpMessage
 			}
 		}
 	}
 }
 
 func main() {
-	coordinator := &ClientCoordinator{
-		clients:     make(map[*Client]bool),
-		subscribe:   make(chan *Client),
-		unsubscribe: make(chan *Client),
-		broadcast:   make(chan *HttpPacket),
+	coordinator := &wsCoordinator{
+		clients:     make(map[*wsClient]bool),
+		subscribe:   make(chan *wsClient),
+		unsubscribe: make(chan *wsClient),
+		broadcast:   make(chan *httpMessage),
 	}
 
 	go coordinator.run()
@@ -166,10 +187,10 @@ func main() {
 
 		log.Println("Websocket client connected")
 
-		client := &Client{
+		client := &wsClient{
 			conn:        conn,
 			coordinator: coordinator,
-			send:        make(chan *HttpPacket),
+			send:        make(chan *httpMessage),
 		}
 
 		go client.read()
