@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
@@ -16,7 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func packetCapture(result chan<- *httpMessage) {
+func packetCapture(result chan<- *g2sMessage) {
 	var port, device string
 	flag.StringVar(&port, "p", "", "port number")
 	flag.StringVar(&device, "d", "", "interface device name")
@@ -35,7 +35,7 @@ func packetCapture(result chan<- *httpMessage) {
 
 	log.Printf("Capturing HTTP packets on port %s...", port)
 
-	streamFactory := &httpStreamFactory{result}
+	streamFactory := &g2sStreamFactory{result}
 	streamPool := tcpassembly.NewStreamPool(streamFactory)
 	assembler := tcpassembly.NewAssembler(streamPool)
 
@@ -56,54 +56,59 @@ func packetCapture(result chan<- *httpMessage) {
 	}
 }
 
-type httpMessage struct {
+type g2sMessage struct {
 	AddressFlow string `json:"ip"`
 	PortFlow    string `json:"port"`
 	Raw         string `json:"raw"`
 	Parsed      string `json:"payload"`
 }
 
-type httpStreamFactory struct {
-	result chan<- *httpMessage
+type g2sStreamFactory struct {
+	result chan<- *g2sMessage
 }
 
-type httpStream struct {
+type g2sStream struct {
 	net, transport gopacket.Flow
 	r              tcpreader.ReaderStream
-	result         chan<- *httpMessage
+	result         chan<- *g2sMessage
 }
 
-func (h *httpStreamFactory) New(net, transport gopacket.Flow) tcpassembly.Stream {
-	hstream := &httpStream{
+func (f *g2sStreamFactory) New(net, transport gopacket.Flow) tcpassembly.Stream {
+	stream := &g2sStream{
 		net:       net,
 		transport: transport,
 		r:         tcpreader.NewReaderStream(),
-		result:    h.result,
+		result:    f.result,
 	}
-	go hstream.run()
+	go stream.scan()
 
-	return &hstream.r
+	return &stream.r
 }
 
-func (h *httpStream) run() {
-	req, err := ioutil.ReadAll(&h.r)
-	if err != nil {
-		tcpreader.DiscardBytesToEOF(&h.r)
-		log.Println("Error reading stream", h.net, h.transport, ":", err)
+func (stream *g2sStream) scan() {
+	scanner := bufio.NewScanner(&stream.r)
+	split := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		if atEOF {
+			return 0, data, bufio.ErrFinalToken
+		}
+		return 0, nil, nil
 	}
-
-	h.result <- &httpMessage{
-		AddressFlow: fmt.Sprintf("%s", h.net),
-		PortFlow:    fmt.Sprintf("%s", h.transport),
-		Raw:         string(req),
-		Parsed:      string(req),
+	scanner.Split(split)
+	for scanner.Scan() {
+		log.Println(scanner.Text())
+		stream.result <- &g2sMessage{
+			AddressFlow: fmt.Sprintf("%s", stream.net),
+			PortFlow:    fmt.Sprintf("%s", stream.transport),
+			Raw:         scanner.Text(),
+			Parsed:      scanner.Text(),
+		}
 	}
 }
 
 type wsClient struct {
 	conn        *websocket.Conn
 	coordinator *wsCoordinator
-	send        chan *httpMessage
+	send        chan *g2sMessage
 }
 
 func (client *wsClient) read() {
@@ -136,7 +141,7 @@ type wsCoordinator struct {
 	clients     map[*wsClient]bool
 	subscribe   chan *wsClient
 	unsubscribe chan *wsClient
-	broadcast   chan *httpMessage
+	broadcast   chan *g2sMessage
 }
 
 func (coordinator *wsCoordinator) run() {
@@ -150,9 +155,9 @@ func (coordinator *wsCoordinator) run() {
 				delete(coordinator.clients, client)
 			}
 
-		case httpMessage := <-coordinator.broadcast:
+		case g2sMessage := <-coordinator.broadcast:
 			for client := range coordinator.clients {
-				client.send <- httpMessage
+				client.send <- g2sMessage
 			}
 		}
 	}
@@ -163,7 +168,7 @@ func main() {
 		clients:     make(map[*wsClient]bool),
 		subscribe:   make(chan *wsClient),
 		unsubscribe: make(chan *wsClient),
-		broadcast:   make(chan *httpMessage),
+		broadcast:   make(chan *g2sMessage),
 	}
 
 	go coordinator.run()
@@ -190,7 +195,7 @@ func main() {
 		client := &wsClient{
 			conn:        conn,
 			coordinator: coordinator,
-			send:        make(chan *httpMessage),
+			send:        make(chan *g2sMessage),
 		}
 
 		go client.read()
