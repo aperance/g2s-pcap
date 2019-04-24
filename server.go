@@ -4,8 +4,11 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/gopacket"
@@ -59,8 +62,7 @@ func packetCapture(result chan<- *g2sMessage) {
 type g2sMessage struct {
 	AddressFlow string `json:"ip"`
 	PortFlow    string `json:"port"`
-	Raw         string `json:"raw"`
-	Parsed      string `json:"payload"`
+	Payload     string `json:"payload"`
 }
 
 type g2sStreamFactory struct {
@@ -86,22 +88,36 @@ func (f *g2sStreamFactory) New(net, transport gopacket.Flow) tcpassembly.Stream 
 }
 
 func (stream *g2sStream) scan() {
+	openingTagRegex := regexp.MustCompile(`&lt;[^/&lt;]*g2sMessage`)
+	closingTagRegex := regexp.MustCompile(`g2sMessage&gt;`)
+
 	scanner := bufio.NewScanner(&stream.r)
 	split := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if atEOF {
-			return 0, data, bufio.ErrFinalToken
+			return 0, nil, io.EOF
 		}
-		return 0, nil, nil
+		openingTag := openingTagRegex.FindIndex(data)
+		if openingTag == nil {
+			return 0, nil, nil
+		}
+		closingTag := closingTagRegex.FindIndex(data)
+		if closingTag == nil {
+			return 0, nil, nil
+		}
+		return closingTag[1], data[openingTag[0]:closingTag[1]], nil
 	}
 	scanner.Split(split)
+
 	for scanner.Scan() {
-		log.Println(scanner.Text())
+		result := strings.ReplaceAll(strings.ReplaceAll(scanner.Text(), "&lt;", "<"), "&gt;", ">")
 		stream.result <- &g2sMessage{
 			AddressFlow: fmt.Sprintf("%s", stream.net),
 			PortFlow:    fmt.Sprintf("%s", stream.transport),
-			Raw:         scanner.Text(),
-			Parsed:      scanner.Text(),
+			Payload:     result,
 		}
+	}
+	if scanner.Err() != nil {
+		fmt.Printf("error: %s\n", scanner.Err())
 	}
 }
 
