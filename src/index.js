@@ -1,6 +1,6 @@
 import React, { useReducer, useState, useRef, useEffect } from "react";
 import ReactDOM from "react-dom";
-import { xml2js } from "xml-js";
+import { xmlFormat } from "./xmlFormat";
 import { MessageList } from "./components/MessageList";
 
 function App() {
@@ -40,17 +40,10 @@ function reducer(state, action) {
         const message = JSON.parse(action.data);
         console.log(message);
 
-        const xml = message.payload
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .split(/\s*<\/*(g2s:)*g2sMessage.*?>\s*/g)[2];
-        if (xml === undefined) return [...state];
-        console.log(xml);
+        const xml = xmlFormat(message.payload);
+        const height = ((xml.match(/\n/g) || []).length + 2) * 16;
 
-        const obj = xml2js(xml, { compact: true, alwaysArray: false });
-        console.log(obj);
-
-        return [...state, { ...message, xml, obj }];
+        return [...state, { ...message, xml, height }];
       } catch (err) {
         console.error(err);
         return [...state];
