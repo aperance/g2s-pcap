@@ -19,7 +19,14 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func packetCapture(result chan<- *g2sMessage) {
+type Message struct {
+	AddressFlow string `json:"ip"`
+	PortFlow    string `json:"port"`
+	Protocol	string `json:"protocol"`
+	Payload     string `json:"payload"`
+}
+
+func packetCapture( result chan<- *Message) {
 	var port, device string
 	flag.StringVar(&port, "p", "", "port number")
 	flag.StringVar(&device, "d", "", "interface device name")
@@ -31,7 +38,7 @@ func packetCapture(result chan<- *g2sMessage) {
 	}
 	defer handle.Close()
 
-	err = handle.SetBPFFilter("tcp port " + port)
+	err = handle.SetBPFFilter("udp or tcp port " + port)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -48,31 +55,37 @@ func packetCapture(result chan<- *g2sMessage) {
 			log.Println("Error decoding some part of the packet:", err)
 			continue
 		}
-		if packet.NetworkLayer() == nil || packet.TransportLayer() == nil ||
-			packet.TransportLayer().LayerType() != layers.LayerTypeTCP {
+		if packet.NetworkLayer() == nil || packet.TransportLayer() == nil  {
 			continue
 		}
-
-		flow := packet.NetworkLayer().NetworkFlow()
-		tcp := packet.TransportLayer().(*layers.TCP)
-		assembler.Assemble(flow, tcp)
+		if packet.TransportLayer().LayerType() == layers.LayerTypeUDP {
+			udp := packet.TransportLayer().(*layers.UDP)
+			if udp.SrcPort.String() != "49152" && udp.DstPort.String() != "49152" {
+				continue
+			}
+			result <- &Message{
+				AddressFlow:	packet.NetworkLayer().NetworkFlow().String(),
+				PortFlow:		packet.TransportLayer().TransportFlow().String(),
+				Protocol:		"freeform",
+				Payload:		fmt.Sprintf("%x", udp.Payload),
+			}
+		}
+		if packet.TransportLayer().LayerType() == layers.LayerTypeTCP {
+			flow := packet.NetworkLayer().NetworkFlow()
+			tcp := packet.TransportLayer().(*layers.TCP)
+			assembler.Assemble(flow, tcp)
+		}
 	}
 }
 
-type g2sMessage struct {
-	AddressFlow string `json:"ip"`
-	PortFlow    string `json:"port"`
-	Payload     string `json:"payload"`
-}
-
 type g2sStreamFactory struct {
-	result chan<- *g2sMessage
+	result chan<- *Message
 }
 
 type g2sStream struct {
 	net, transport gopacket.Flow
 	r              tcpreader.ReaderStream
-	result         chan<- *g2sMessage
+	result         chan<- *Message
 }
 
 func (f *g2sStreamFactory) New(net, transport gopacket.Flow) tcpassembly.Stream {
@@ -88,8 +101,8 @@ func (f *g2sStreamFactory) New(net, transport gopacket.Flow) tcpassembly.Stream 
 }
 
 func (stream *g2sStream) scan() {
-	openingTagRegex := regexp.MustCompile(`&lt;[^/&lt;]*g2sMessage`)
-	closingTagRegex := regexp.MustCompile(`g2sMessage&gt;`)
+	openingTagRegex := regexp.MustCompile(`<s[^<]*?:Body.*?>\s*`)
+	closingTagRegex := regexp.MustCompile(`\s*<\/s[^<]*?:Body.*?>`)
 
 	scanner := bufio.NewScanner(&stream.r)
 	split := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
@@ -104,16 +117,17 @@ func (stream *g2sStream) scan() {
 		if closingTag == nil {
 			return 0, nil, nil
 		}
-		return closingTag[1], data[openingTag[0]:closingTag[1]], nil
+		return closingTag[1], data[openingTag[1]:closingTag[0]], nil
 	}
 	scanner.Split(split)
 
 	for scanner.Scan() {
-		result := strings.ReplaceAll(strings.ReplaceAll(scanner.Text(), "&lt;", "<"), "&gt;", ">")
-		stream.result <- &g2sMessage{
-			AddressFlow: fmt.Sprintf("%s", stream.net),
-			PortFlow:    fmt.Sprintf("%s", stream.transport),
-			Payload:     result,
+		r := strings.NewReplacer(`&lt;?xml version="1.0"?&gt;`, "", "&lt;", "<", "&gt;", ">")
+		stream.result <- &Message{
+			AddressFlow:	fmt.Sprintf("%s", stream.net),
+			PortFlow:		fmt.Sprintf("%s", stream.transport),
+			Protocol:		"g2s",
+			Payload:		r.Replace(scanner.Text()),
 		}
 	}
 	if scanner.Err() != nil {
@@ -124,7 +138,7 @@ func (stream *g2sStream) scan() {
 type wsClient struct {
 	conn        *websocket.Conn
 	coordinator *wsCoordinator
-	send        chan *g2sMessage
+	send        chan *Message
 }
 
 func (client *wsClient) read() {
@@ -157,7 +171,7 @@ type wsCoordinator struct {
 	clients     map[*wsClient]bool
 	subscribe   chan *wsClient
 	unsubscribe chan *wsClient
-	broadcast   chan *g2sMessage
+	broadcast   chan *Message
 }
 
 func (coordinator *wsCoordinator) run() {
@@ -171,9 +185,9 @@ func (coordinator *wsCoordinator) run() {
 				delete(coordinator.clients, client)
 			}
 
-		case g2sMessage := <-coordinator.broadcast:
+		case Message := <-coordinator.broadcast:
 			for client := range coordinator.clients {
-				client.send <- g2sMessage
+				client.send <- Message
 			}
 		}
 	}
@@ -184,7 +198,7 @@ func main() {
 		clients:     make(map[*wsClient]bool),
 		subscribe:   make(chan *wsClient),
 		unsubscribe: make(chan *wsClient),
-		broadcast:   make(chan *g2sMessage),
+		broadcast:   make(chan *Message),
 	}
 
 	go coordinator.run()
@@ -211,7 +225,7 @@ func main() {
 		client := &wsClient{
 			conn:        conn,
 			coordinator: coordinator,
-			send:        make(chan *g2sMessage),
+			send:        make(chan *Message),
 		}
 
 		go client.read()
