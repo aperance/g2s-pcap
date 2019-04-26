@@ -1,12 +1,12 @@
 import React, { useReducer, useState, useRef, useEffect } from "react";
 import ReactDOM from "react-dom";
-import { xmlFormat } from "./xmlFormat";
+import { formatXml } from "./formatters/xml";
+import { formatHex } from "./formatters/hex";
 import { MessageList } from "./components/MessageList";
 
 function App() {
   const [state, dispatch] = useReducer(reducer, []);
   useWebsocket(dispatch);
-
   return <MessageList state={state} />;
 }
 
@@ -33,19 +33,16 @@ function reducer(state, action) {
   switch (action.type) {
     case "push":
       try {
-        const message = JSON.parse(action.data);
-        console.log(message);
+        let message;
+        const raw = JSON.parse(action.data);
+        console.log(raw);
 
-        if (message.protocol === "g2s") {
-          const xml = xmlFormat(message.payload);
-          const height = ((xml.match(/\n/g) || []).length + 5) * 16;
+        if (raw.protocol === "freeform") message = formatHex(raw.payload);
+        else if (raw.protocol === "g2s") message = formatXml(raw.payload);
+        else return [...state];
 
-          return [...state, { ...message, g2s, height }];
-        }
-        if (message.protocol === "freeform") {
-          console.log(message.payload);
-        }
-        return [...state];
+        const height = ((message.match(/\n/g) || []).length + 5) * 16;
+        return [...state, { raw, message, height }];
       } catch (err) {
         console.error(err);
         return [...state];

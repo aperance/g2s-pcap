@@ -1,4 +1,4 @@
-export function xmlFormat(raw) {
+export function formatXml(raw) {
   const indent = depth => "\n" + "  ".repeat(depth);
 
   let ar = raw

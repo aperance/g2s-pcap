@@ -29,7 +29,7 @@ function MessageList({ state }) {
             rowCount={state.length}
             rowHeight={({ index }) => state[index].height}
             rowRenderer={({ key, index, style }) =>
-              state[index].xml && (
+              state[index].message && (
                 <div key={key} style={style}>
                   <Message state={state[index]} />
                 </div>

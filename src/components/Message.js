@@ -6,7 +6,7 @@ hljs.registerLanguage("plaintext", plaintext);
 hljs.registerLanguage("xml", xml);
 import "highlight.js/styles/atom-one-dark-reasonable.css";
 
-function Message({ state: { ip, port, g2s } }) {
+function Message({ state: { raw, message } }) {
   const rootEl = useRef(null);
 
   useLayoutEffect(() => {
@@ -18,7 +18,7 @@ function Message({ state: { ip, port, g2s } }) {
   return (
     <div ref={rootEl}>
       <pre>
-        <code className="xml">{`  ${ip} (${port})\n\n${g2s}`}</code>
+        <code className="xml">{`  ${raw.ip} (${raw.port})\n\n${message}`}</code>
       </pre>
     </div>
   );
