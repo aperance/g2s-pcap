@@ -7,11 +7,7 @@ function App() {
   const [state, dispatch] = useReducer(reducer, []);
   useWebsocket(dispatch);
 
-  return (
-    <div style={{ height: "97vh", width: "97vw" }}>
-      <MessageList state={state} />
-    </div>
-  );
+  return <MessageList state={state} />;
 }
 
 function useWebsocket(dispatch) {
@@ -40,10 +36,16 @@ function reducer(state, action) {
         const message = JSON.parse(action.data);
         console.log(message);
 
-        const xml = xmlFormat(message.payload);
-        const height = ((xml.match(/\n/g) || []).length + 2) * 16;
+        if (message.protocol === "g2s") {
+          const xml = xmlFormat(message.payload);
+          const height = ((xml.match(/\n/g) || []).length + 5) * 16;
 
-        return [...state, { ...message, xml, height }];
+          return [...state, { ...message, g2s, height }];
+        }
+        if (message.protocol === "freeform") {
+          console.log(message.payload);
+        }
+        return [...state];
       } catch (err) {
         console.error(err);
         return [...state];

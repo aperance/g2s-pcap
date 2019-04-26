@@ -8,12 +8,11 @@ export function xmlFormat(raw) {
       .replace(/"[\s]*\/>(?!\S*?Meter)/g, '"~::~/>')
       .replace(/\s(?=\S*?=".*?")(?!\S*?meterName)(?!\S*?meterValue)/g, "~::~")
       .split("~::~"),
-    len = ar.length,
-    deep = 0,
+    deep = 3,
     str = "",
     ix = 0;
 
-  for (ix = 0; ix < len; ix++) {
+  for (ix = 0; ix < ar.length; ix++) {
     // <elm></elm> //
     if (
       /^<\w/.exec(ar[ix - 1]) &&
