@@ -3,30 +3,17 @@ import ReactDOM from "react-dom";
 import { formatXml } from "./formatters/xml";
 import { formatHex } from "./formatters/hex";
 import { MessageList } from "./components/MessageList";
+import { Toolbar } from "./components/Toolbar";
 
 function App() {
   const [state, dispatch] = useReducer(reducer, []);
   useWebsocket(dispatch);
-  return <MessageList state={state} />;
-}
-
-function useWebsocket(dispatch) {
-  const [retry, setRetry] = useState(false);
-  const socket = useRef(null);
-
-  useEffect(() => {
-    if (!socket.current || retry) {
-      const ws = new WebSocket("ws://10.91.1.46:3000/ws");
-
-      ws.onopen = () => console.log("Connection established");
-      ws.onerror = () => console.log("Connection Error");
-      ws.onclose = () => setTimeout(() => setRetry(true), 5000);
-      ws.onmessage = e => dispatch({ type: "push", data: e.data });
-
-      setRetry(false);
-      socket.current = ws;
-    }
-  }, [retry]);
+  return (
+    <div className="root">
+      <MessageList state={state} />
+      <Toolbar />
+    </div>
+  );
 }
 
 function reducer(state, action) {
@@ -52,6 +39,25 @@ function reducer(state, action) {
     default:
       throw new Error();
   }
+}
+
+function useWebsocket(dispatch) {
+  const [retry, setRetry] = useState(false);
+  const socket = useRef(null);
+
+  useEffect(() => {
+    if (!socket.current || retry) {
+      const ws = new WebSocket("ws://10.91.1.46:3000/ws");
+
+      ws.onopen = () => console.log("Connection established");
+      ws.onerror = () => console.log("Connection Error");
+      ws.onclose = () => setTimeout(() => setRetry(true), 5000);
+      ws.onmessage = e => dispatch({ type: "push", data: e.data });
+
+      setRetry(false);
+      socket.current = ws;
+    }
+  }, [retry]);
 }
 
 var mountNode = document.getElementById("app");

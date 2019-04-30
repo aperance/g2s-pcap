@@ -11,15 +11,7 @@ function MessageList({ state }) {
   }, [state]);
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: "0",
-        left: "0",
-        height: "100%",
-        width: "100%"
-      }}
-    >
+    <div className="message-list">
       <AutoSizer>
         {({ height, width }) => (
           <List

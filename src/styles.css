@@ -1,0 +1,32 @@
+.root {
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+}
+
+.message-list {
+  flex-grow: 1;
+  background: #282c34;
+}
+
+.toolbar {
+  flex-grow: 0;
+  padding: 16px 16px 16px 16px;
+  background: #333740;
+}
+
+.toolbar > label {
+  display: block;
+  font-family: monospace;
+  color: #abb2bf;
+}
+
+.toolbar > input {
+  color: #abb2bf;
+  background: black;
+  font-family: monospace;
+  border-style: none;
+}
