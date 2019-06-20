@@ -14,14 +14,14 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Message struct {
+type message struct {
 	AddressFlow string `json:"ip"`
 	PortFlow    string `json:"port"`
 	Protocol    string `json:"protocol"`
 	Payload     string `json:"payload"`
 }
 
-func packetCapture(result chan<- *Message) {
+func packetCapture(result chan<- *message) {
 	var port, device string
 	flag.StringVar(&port, "p", "47028", "port number")
 	flag.StringVar(&device, "d", "\\Device\\NPF_{B82CD492-3820-4FCD-9309-552CA055A24C}", "interface device name")
@@ -58,7 +58,7 @@ func packetCapture(result chan<- *Message) {
 			if udp.SrcPort.String() != "49152" && udp.DstPort.String() != "49152" {
 				continue
 			}
-			result <- &Message{
+			result <- &message{
 				AddressFlow: packet.NetworkLayer().NetworkFlow().String(),
 				PortFlow:    packet.TransportLayer().TransportFlow().String(),
 				Protocol:    "freeform",
@@ -74,7 +74,7 @@ func packetCapture(result chan<- *Message) {
 				closingTag := closingTagRegex.FindIndex(buffer[key])
 				if openingTag != nil && closingTag != nil {
 					g2sBody := buffer[key][openingTag[1]:closingTag[0]]
-					result <- &Message{
+					result <- &message{
 						AddressFlow: packet.NetworkLayer().NetworkFlow().String(),
 						PortFlow:    packet.TransportLayer().TransportFlow().String(),
 						Protocol:    "g2s",
@@ -92,7 +92,7 @@ func packetCapture(result chan<- *Message) {
 type wsClient struct {
 	conn        *websocket.Conn
 	coordinator *wsCoordinator
-	send        chan *Message
+	send        chan *message
 }
 
 func (client *wsClient) read() {
@@ -125,7 +125,7 @@ type wsCoordinator struct {
 	clients     map[*wsClient]bool
 	subscribe   chan *wsClient
 	unsubscribe chan *wsClient
-	broadcast   chan *Message
+	broadcast   chan *message
 }
 
 func (coordinator *wsCoordinator) run() {
@@ -139,9 +139,9 @@ func (coordinator *wsCoordinator) run() {
 				delete(coordinator.clients, client)
 			}
 
-		case Message := <-coordinator.broadcast:
+		case message := <-coordinator.broadcast:
 			for client := range coordinator.clients {
-				client.send <- Message
+				client.send <- message
 			}
 		}
 	}
@@ -152,7 +152,7 @@ func main() {
 		clients:     make(map[*wsClient]bool),
 		subscribe:   make(chan *wsClient),
 		unsubscribe: make(chan *wsClient),
-		broadcast:   make(chan *Message),
+		broadcast:   make(chan *message),
 	}
 
 	go coordinator.run()
@@ -179,7 +179,7 @@ func main() {
 		client := &wsClient{
 			conn:        conn,
 			coordinator: coordinator,
-			send:        make(chan *Message),
+			send:        make(chan *message),
 		}
 
 		go client.read()

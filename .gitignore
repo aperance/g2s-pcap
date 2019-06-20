@@ -12,5 +12,7 @@
 *.out
 
 dist
+bin
 .cache
+.vscode
 node_modules
