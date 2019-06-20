@@ -1,35 +1,30 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/google/gopacket/tcpassembly"
-	"github.com/google/gopacket/tcpassembly/tcpreader"
 	"github.com/gorilla/websocket"
 )
 
 type Message struct {
 	AddressFlow string `json:"ip"`
 	PortFlow    string `json:"port"`
-	Protocol	string `json:"protocol"`
+	Protocol    string `json:"protocol"`
 	Payload     string `json:"payload"`
 }
 
-func packetCapture( result chan<- *Message) {
+func packetCapture(result chan<- *Message) {
 	var port, device string
-	flag.StringVar(&port, "p", "", "port number")
-	flag.StringVar(&device, "d", "", "interface device name")
+	flag.StringVar(&port, "p", "47028", "port number")
+	flag.StringVar(&device, "d", "\\Device\\NPF_{B82CD492-3820-4FCD-9309-552CA055A24C}", "interface device name")
 	flag.Parse()
 
 	handle, err := pcap.OpenLive(device, 2048, false, 30*time.Second)
@@ -45,17 +40,17 @@ func packetCapture( result chan<- *Message) {
 
 	log.Printf("Capturing HTTP packets on port %s...", port)
 
-	streamFactory := &g2sStreamFactory{result}
-	streamPool := tcpassembly.NewStreamPool(streamFactory)
-	assembler := tcpassembly.NewAssembler(streamPool)
-
+	buffer := make(map[string]([]byte))
+	openingTagRegex := regexp.MustCompile(`<s[^<]*?:Body.*?>\s*`)
+	closingTagRegex := regexp.MustCompile(`\s*<\/s[^<]*?:Body.*?>`)
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+
 	for packet := range packetSource.Packets() {
 		if err := packet.ErrorLayer(); err != nil {
 			log.Println("Error decoding some part of the packet:", err)
 			continue
 		}
-		if packet.NetworkLayer() == nil || packet.TransportLayer() == nil  {
+		if packet.NetworkLayer() == nil || packet.TransportLayer() == nil {
 			continue
 		}
 		if packet.TransportLayer().LayerType() == layers.LayerTypeUDP {
@@ -64,74 +59,33 @@ func packetCapture( result chan<- *Message) {
 				continue
 			}
 			result <- &Message{
-				AddressFlow:	packet.NetworkLayer().NetworkFlow().String(),
-				PortFlow:		packet.TransportLayer().TransportFlow().String(),
-				Protocol:		"freeform",
-				Payload:		fmt.Sprintf("%x", udp.Payload),
+				AddressFlow: packet.NetworkLayer().NetworkFlow().String(),
+				PortFlow:    packet.TransportLayer().TransportFlow().String(),
+				Protocol:    "freeform",
+				Payload:     fmt.Sprintf("%x", udp.Payload),
 			}
 		}
-		if packet.TransportLayer().LayerType() == layers.LayerTypeTCP {
-			flow := packet.NetworkLayer().NetworkFlow()
-			tcp := packet.TransportLayer().(*layers.TCP)
-			assembler.Assemble(flow, tcp)
+		if packet.TransportLayer().LayerType() == layers.LayerTypeTCP && packet.ApplicationLayer() != nil {
+			key := packet.NetworkLayer().NetworkFlow().String()
+			buffer[key] = append(buffer[key], packet.ApplicationLayer().Payload()...)
+
+			if packet.TransportLayer().(*layers.TCP).PSH {
+				openingTag := openingTagRegex.FindIndex(buffer[key])
+				closingTag := closingTagRegex.FindIndex(buffer[key])
+				if openingTag != nil && closingTag != nil {
+					g2sBody := buffer[key][openingTag[1]:closingTag[0]]
+					result <- &Message{
+						AddressFlow: packet.NetworkLayer().NetworkFlow().String(),
+						PortFlow:    packet.TransportLayer().TransportFlow().String(),
+						Protocol:    "g2s",
+						Payload:     string(g2sBody),
+					}
+				}
+
+				delete(buffer, key)
+			}
+
 		}
-	}
-}
-
-type g2sStreamFactory struct {
-	result chan<- *Message
-}
-
-type g2sStream struct {
-	net, transport gopacket.Flow
-	r              tcpreader.ReaderStream
-	result         chan<- *Message
-}
-
-func (f *g2sStreamFactory) New(net, transport gopacket.Flow) tcpassembly.Stream {
-	stream := &g2sStream{
-		net:       net,
-		transport: transport,
-		r:         tcpreader.NewReaderStream(),
-		result:    f.result,
-	}
-	go stream.scan()
-
-	return &stream.r
-}
-
-func (stream *g2sStream) scan() {
-	openingTagRegex := regexp.MustCompile(`<s[^<]*?:Body.*?>\s*`)
-	closingTagRegex := regexp.MustCompile(`\s*<\/s[^<]*?:Body.*?>`)
-
-	scanner := bufio.NewScanner(&stream.r)
-	split := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		if atEOF {
-			return 0, nil, io.EOF
-		}
-		openingTag := openingTagRegex.FindIndex(data)
-		if openingTag == nil {
-			return 0, nil, nil
-		}
-		closingTag := closingTagRegex.FindIndex(data)
-		if closingTag == nil {
-			return 0, nil, nil
-		}
-		return closingTag[1], data[openingTag[1]:closingTag[0]], nil
-	}
-	scanner.Split(split)
-
-	for scanner.Scan() {
-		r := strings.NewReplacer(`&lt;?xml version="1.0"?&gt;`, "", "&lt;", "<", "&gt;", ">")
-		stream.result <- &Message{
-			AddressFlow:	fmt.Sprintf("%s", stream.net),
-			PortFlow:		fmt.Sprintf("%s", stream.transport),
-			Protocol:		"g2s",
-			Payload:		r.Replace(scanner.Text()),
-		}
-	}
-	if scanner.Err() != nil {
-		fmt.Printf("error: %s\n", scanner.Err())
 	}
 }
 
