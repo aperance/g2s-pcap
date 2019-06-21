@@ -15,10 +15,10 @@ import (
 )
 
 type message struct {
-	AddressFlow string `json:"ip"`
-	PortFlow    string `json:"port"`
-	Protocol    string `json:"protocol"`
-	Payload     string `json:"payload"`
+	Flow      string `json:"flow"`
+	Protocol  string `json:"protocol"`
+	Direction string `json:"direction"`
+	Payload   string `json:"payload"`
 }
 
 func packetCapture(result chan<- *message) {
@@ -53,16 +53,30 @@ func packetCapture(result chan<- *message) {
 		if packet.NetworkLayer() == nil || packet.TransportLayer() == nil {
 			continue
 		}
+
+		var direction string
+		addressFlow := packet.NetworkLayer().NetworkFlow()
+		portFlow := packet.TransportLayer().TransportFlow()
+		src := addressFlow.Src().String() + ":" + portFlow.Src().String()
+		dst := addressFlow.Dst().String() + ":" + portFlow.Dst().String()
+		if src == "172.20.109.46:47028" || dst == "172.20.109.41:11112" {
+			direction = "Outbound"
+		} else if src == "172.20.109.41:11112" || dst == "172.20.109.46:47028" {
+			direction = "Inbound"
+		} else {
+			continue
+		}
+
 		if packet.TransportLayer().LayerType() == layers.LayerTypeUDP {
 			udp := packet.TransportLayer().(*layers.UDP)
 			if udp.SrcPort.String() != "49152" && udp.DstPort.String() != "49152" {
 				continue
 			}
 			result <- &message{
-				AddressFlow: packet.NetworkLayer().NetworkFlow().String(),
-				PortFlow:    packet.TransportLayer().TransportFlow().String(),
-				Protocol:    "freeform",
-				Payload:     fmt.Sprintf("%x", udp.Payload),
+				Flow:      src + " -> " + dst,
+				Protocol:  "Freeform",
+				Direction: direction,
+				Payload:   fmt.Sprintf("%x", udp.Payload),
 			}
 		}
 		if packet.TransportLayer().LayerType() == layers.LayerTypeTCP && packet.ApplicationLayer() != nil {
@@ -75,10 +89,10 @@ func packetCapture(result chan<- *message) {
 				if openingTag != nil && closingTag != nil {
 					g2sBody := buffer[key][openingTag[1]:closingTag[0]]
 					result <- &message{
-						AddressFlow: packet.NetworkLayer().NetworkFlow().String(),
-						PortFlow:    packet.TransportLayer().TransportFlow().String(),
-						Protocol:    "g2s",
-						Payload:     string(g2sBody),
+						Flow:      src + " -> " + dst,
+						Protocol:  "G2S",
+						Direction: direction,
+						Payload:   string(g2sBody),
 					}
 				}
 
