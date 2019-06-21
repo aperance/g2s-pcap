@@ -6,19 +6,19 @@ hljs.registerLanguage("plaintext", plaintext);
 hljs.registerLanguage("xml", xml);
 import "highlight.js/styles/atom-one-dark-reasonable.css";
 
-function Message({ state: { raw, message } }) {
+function Message({ message }) {
   const rootEl = useRef(null);
 
   useLayoutEffect(() => {
     rootEl.current.querySelectorAll("pre code").forEach(block => {
       hljs.highlightBlock(block);
     });
-  }, []);
+  }, [message]);
 
   return (
     <div ref={rootEl}>
       <pre>
-        <code className="xml">{`  ${raw.ip} (${raw.port})\n\n${message}`}</code>
+        <code className="xml">{message}</code>
       </pre>
     </div>
   );

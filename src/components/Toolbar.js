@@ -1,10 +1,15 @@
 import React from "react";
 
-function Toolbar() {
+function Toolbar({ dispatch }) {
   return (
     <div className="toolbar">
-      <label htmlFor="ip">IP Address</label>
-      <input type="text" id="ip" name="user_name" />
+      <label htmlFor="id">EGM ID</label>
+      <input
+        type="text"
+        id="id"
+        name="id"
+        onChange={e => dispatch({ type: "setFilter", data: e.target.value })}
+      />
     </div>
   );
 }

@@ -2,13 +2,13 @@ import React, { useRef, useEffect, useState } from "react";
 import { AutoSizer, List } from "react-virtualized";
 import { Message } from "./Message";
 
-function MessageList({ state }) {
+function MessageList({ messages }) {
   const listEl = useRef(null);
   const [autoScroll, setAutoScroll] = useState(false);
 
   useEffect(() => {
-    if (autoScroll) listEl.current.scrollToRow(state.length);
-  }, [state]);
+    if (autoScroll) listEl.current.scrollToRow(messages.length);
+  }, [messages]);
 
   return (
     <div className="message-list">
@@ -18,12 +18,12 @@ function MessageList({ state }) {
             ref={listEl}
             width={width}
             height={height}
-            rowCount={state.length}
-            rowHeight={({ index }) => state[index].height}
+            rowCount={messages.length}
+            rowHeight={({ index }) => messages[index].height}
             rowRenderer={({ key, index, style }) =>
-              state[index].message && (
+              messages[index].formattedMessage && (
                 <div key={key} style={style}>
-                  <Message state={state[index]} />
+                  <Message message={messages[index].formattedMessage} />
                 </div>
               )
             }

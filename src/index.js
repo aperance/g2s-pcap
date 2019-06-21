@@ -6,36 +6,53 @@ import { MessageList } from "./components/MessageList";
 import { Toolbar } from "./components/Toolbar";
 
 function App() {
-  const [state, dispatch] = useReducer(reducer, []);
+  const [state, dispatch] = useReducer(reducer, {
+    messages: [],
+    filters: { egmId: "" }
+  });
   useWebsocket(dispatch);
+
+  const filterFunction = msg =>
+    msg.formattedMessage
+      .match(/(?<=egmId=").*?(?=")/g)[0]
+      .includes(state.filters.egmId);
+
   return (
     <div className="root">
-      <MessageList state={state} />
-      <Toolbar />
+      <MessageList messages={state.messages.filter(filterFunction)} />
+      <Toolbar dispatch={dispatch} filters={state.filters} />
     </div>
   );
 }
 
 function reducer(state, action) {
   switch (action.type) {
-    case "push":
+    case "pushMessage":
       try {
-        let message;
         const raw = JSON.parse(action.data);
+        const { protocol, payload, flow, direction } = raw;
         console.log(raw);
 
-        if (raw.protocol === "freeform") message = formatHex(raw.payload);
-        else if (raw.protocol === "g2s") message = formatXml(raw.payload);
-        else return [...state];
+        let formattedMessage = `${direction} ${protocol} Message (${flow})\n\n`;
 
-        const height = ((message.match(/\n/g) || []).length + 5) * 16;
-        return [...state, { raw, message, height }];
+        if (protocol === "Freeform") formattedMessage += formatHex(payload);
+        else if (protocol === "G2S") formattedMessage += formatXml(payload);
+        else return { ...state };
+
+        const height = ((formattedMessage.match(/\n/g) || []).length + 3) * 16;
+
+        return {
+          ...state,
+          messages: [...state.messages, { formattedMessage, height, raw }]
+        };
       } catch (err) {
         console.error(err);
-        return [...state];
+        return { ...state };
       }
-    case "clear":
-      return [];
+    case "setFilter":
+      return { ...state, filters: { egmId: action.data } };
+    case "clearState":
+      return {};
     default:
       throw new Error();
   }
@@ -52,7 +69,7 @@ function useWebsocket(dispatch) {
       ws.onopen = () => console.log("Connection established");
       ws.onerror = () => console.log("Connection Error");
       ws.onclose = () => setTimeout(() => setRetry(true), 5000);
-      ws.onmessage = e => dispatch({ type: "push", data: e.data });
+      ws.onmessage = e => dispatch({ type: "pushMessage", data: e.data });
 
       setRetry(false);
       socket.current = ws;
