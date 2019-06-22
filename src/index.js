@@ -13,12 +13,16 @@ function App() {
   useWebsocket(dispatch);
 
   const filterFunction = msg => {
-    const pattern =
-      msg.raw.protocol === "G2S"
-        ? `(?<=egmId=").*?(?=")`
-        : `(?<=AssetID:\\s\\w+\\s\\().*?(?=\\))`;
-    const regex = RegExp(pattern, "g");
-    return msg.formattedMessage.match(regex)[0].includes(state.filters.egmId);
+    try {
+      const pattern =
+        msg.raw.protocol === "G2S"
+          ? `(?<=egmId=").*?(?=")`
+          : `(?<=AssetID:\\s\\w+\\s\\().*?(?=\\))`;
+      const regex = RegExp(pattern, "g");
+      return msg.formattedMessage.match(regex)[0].includes(state.filters.egmId);
+    } catch (e) {
+      return true;
+    }
   };
 
   return (
@@ -33,10 +37,7 @@ function reducer(state, action) {
   switch (action.type) {
     case "pushMessage":
       try {
-        const raw = JSON.parse(action.data);
-        const { protocol, payload, flow, direction } = raw;
-        console.log(raw);
-
+        const { protocol, payload, flow, direction } = action.data;
         let formattedMessage = `${direction} ${protocol} Message (${flow})\n\n`;
 
         if (protocol === "Freeform") formattedMessage += formatHex(payload);
@@ -47,7 +48,10 @@ function reducer(state, action) {
 
         return {
           ...state,
-          messages: [...state.messages, { formattedMessage, height, raw }]
+          messages: [
+            ...state.messages,
+            { formattedMessage, height, raw: action.data }
+          ]
         };
       } catch (err) {
         console.error(err);
@@ -56,7 +60,10 @@ function reducer(state, action) {
     case "setFilter":
       return { ...state, filters: { egmId: action.data } };
     case "clearState":
-      return {};
+      return {
+        messages: [],
+        filters: { egmId: "" }
+      };
     default:
       throw new Error();
   }
@@ -71,9 +78,16 @@ function useWebsocket(dispatch) {
       const ws = new WebSocket("ws://10.91.1.46:3000/ws");
 
       ws.onopen = () => console.log("Connection established");
-      ws.onerror = () => console.log("Connection Error");
+      ws.onerror = () => {
+        console.error("Connection Error");
+        dispatch({ type: "clearState" });
+      };
       ws.onclose = () => setTimeout(() => setRetry(true), 5000);
-      ws.onmessage = e => dispatch({ type: "pushMessage", data: e.data });
+      ws.onmessage = e => {
+        const message = JSON.parse(e.data);
+        console.log(message);
+        dispatch({ type: "pushMessage", data: message });
+      };
 
       setRetry(false);
       socket.current = ws;
