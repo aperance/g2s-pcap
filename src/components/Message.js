@@ -18,7 +18,9 @@ function Message({ message }) {
   return (
     <div ref={rootEl}>
       <pre>
-        <code className="xml">{message}</code>
+        <code className="xml" style={{ overflowX: "hidden" }}>
+          {message}
+        </code>
       </pre>
     </div>
   );
