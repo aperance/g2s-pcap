@@ -12,10 +12,14 @@ function App() {
   });
   useWebsocket(dispatch);
 
-  const filterFunction = msg =>
-    msg.formattedMessage
-      .match(/(?<=egmId=").*?(?=")/g)[0]
-      .includes(state.filters.egmId);
+  const filterFunction = msg => {
+    const pattern =
+      msg.raw.protocol === "G2S"
+        ? `(?<=egmId=").*?(?=")`
+        : `(?<=AssetID:\\s\\w+\\s\\().*?(?=\\))`;
+    const regex = RegExp(pattern, "g");
+    return msg.formattedMessage.match(regex)[0].includes(state.filters.egmId);
+  };
 
   return (
     <div className="root">
