@@ -2,6 +2,7 @@ export function formatXml(raw) {
   const indent = depth => "\n" + "  ".repeat(depth);
 
   let ar = raw
+      .replace(/&#xA;/g, "")
       .replace(/&lt;\?xml version="1\.0"\?&gt;/g, "")
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
