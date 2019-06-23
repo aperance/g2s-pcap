@@ -1,4 +1,10 @@
-import React, { useReducer, useState, useRef, useEffect } from "react";
+import React, {
+  useReducer,
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect
+} from "react";
 import ReactDOM from "react-dom";
 import { formatXml } from "./formatters/xml";
 import { formatHex } from "./formatters/hex";
@@ -10,6 +16,7 @@ function App() {
     messages: [],
     filters: { egmId: "" }
   });
+  const ref = useAutoScroll(state);
   useWebsocket(dispatch);
 
   const filterFunction = msg => {
@@ -26,7 +33,7 @@ function App() {
   };
 
   return (
-    <div className="root">
+    <div className="root" ref={ref}>
       <MessageList messages={state.messages.filter(filterFunction)} />
       <Toolbar dispatch={dispatch} filters={state.filters} />
     </div>
@@ -67,6 +74,25 @@ function reducer(state, action) {
     default:
       throw new Error();
   }
+}
+
+function useAutoScroll({ messages }) {
+  const ref = useRef(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+
+  useEffect(() => {
+    ref.current.addEventListener("scroll", e => {
+      const threshold = e.target.scrollHeight - e.target.clientHeight - 100;
+      setAutoScroll(e.target.scrollTop > threshold);
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!autoScroll) return;
+    ref.current.scrollTop = ref.current.scrollHeight - ref.current.clientHeight;
+  }, [messages]);
+
+  return ref;
 }
 
 function useWebsocket(dispatch) {
