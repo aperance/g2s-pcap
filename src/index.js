@@ -8,7 +8,7 @@ import React, {
 import ReactDOM from "react-dom";
 import { formatXml } from "./formatters/xml";
 import { formatHex } from "./formatters/hex";
-import { MessageList } from "./components/MessageList";
+import { Message } from "./components/Message";
 import { Toolbar } from "./components/Toolbar";
 
 function App() {
@@ -19,22 +19,13 @@ function App() {
   const ref = useAutoScroll(state);
   useWebsocket(dispatch);
 
-  const filterFunction = msg => {
-    try {
-      const pattern =
-        msg.raw.protocol === "G2S"
-          ? `(?<=egmId=").*?(?=")`
-          : `(?<=AssetID:\\s\\w+\\s\\().*?(?=\\))`;
-      const regex = RegExp(pattern, "g");
-      return msg.formattedMessage.match(regex)[0].includes(state.filters.egmId);
-    } catch (e) {
-      return true;
-    }
-  };
-
   return (
     <div className="root" ref={ref}>
-      <MessageList messages={state.messages.filter(filterFunction)} />
+      {state.messages.map((message, index) => (
+        <div key={index}>
+          <Message message={message} filters={state.filters} />
+        </div>
+      ))}
       <Toolbar dispatch={dispatch} filters={state.filters} />
     </div>
   );
