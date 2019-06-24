@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/google/gopacket"
@@ -18,6 +19,7 @@ type message struct {
 	Flow      string `json:"flow"`
 	Protocol  string `json:"protocol"`
 	Direction string `json:"direction"`
+	EgmId     string `json:"egmId"`
 	Payload   string `json:"payload"`
 }
 
@@ -42,6 +44,7 @@ func packetCapture(result chan<- *message) {
 
 	startTagRegex := regexp.MustCompile(`<[Ss][^<]*?:Body.*?>\s*`)
 	endTagRegex := regexp.MustCompile(`\s*<\/[Ss][^<]*?:Body.*?>`)
+	egmIDRegex := regexp.MustCompile(`egmId=".*?"`)
 
 	buffer := make(map[string]([]byte))
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
@@ -66,6 +69,10 @@ func packetCapture(result chan<- *message) {
 			payload := packet.TransportLayer().(*layers.UDP).Payload
 
 			if fmt.Sprintf("%x", payload[0:1]) == "a4" {
+				egmID, err := strconv.ParseInt(fmt.Sprintf("%x", payload[17:21]), 16, 32)
+				if err != nil {
+					continue
+				}
 				direction := ""
 				if networkFlow.Dst().String() == "172.20.109.41" {
 					direction = "Outbound"
@@ -77,6 +84,7 @@ func packetCapture(result chan<- *message) {
 					Flow:      flowString,
 					Protocol:  "Freeform",
 					Direction: direction,
+					EgmId:     fmt.Sprintf("%d", egmID),
 					Payload:   fmt.Sprintf("%x", payload),
 				}
 			}
@@ -91,10 +99,17 @@ func packetCapture(result chan<- *message) {
 			buffer[key] = append(buffer[key], packet.ApplicationLayer().Payload()...)
 
 			if packet.TransportLayer().(*layers.TCP).PSH {
-				startTagLocation := startTagRegex.FindIndex(buffer[key])
-				endTagLocation := endTagRegex.FindIndex(buffer[key])
+				startTagIndex := startTagRegex.FindIndex(buffer[key])
+				endTagIndex := endTagRegex.FindIndex(buffer[key])
 
-				if startTagLocation != nil && endTagLocation != nil {
+				if startTagIndex != nil && endTagIndex != nil {
+					payload := buffer[key][startTagIndex[1]:endTagIndex[0]]
+
+					egmID := []byte{}
+					if regexMatch := egmIDRegex.Find(payload); regexMatch != nil {
+						egmID = regexMatch[7 : len(regexMatch)-1]
+					}
+
 					direction := ""
 					if networkFlow.Src().String() == "172.20.109.46" {
 						direction = "Outbound"
@@ -102,12 +117,11 @@ func packetCapture(result chan<- *message) {
 						direction = "Inbound"
 					}
 
-					payload := buffer[key][startTagLocation[1]:endTagLocation[0]]
-
 					result <- &message{
 						Flow:      flowString,
 						Protocol:  "G2S",
 						Direction: direction,
+						EgmId:     string(egmID),
 						Payload:   string(payload),
 					}
 				}

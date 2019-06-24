@@ -3,6 +3,10 @@ body {
   overflow: hidden;
 }
 
+code {
+  overflow-x: hidden !important;
+}
+
 .root {
   overflow-y: scroll;
   position: absolute;
