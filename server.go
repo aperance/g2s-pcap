@@ -19,7 +19,7 @@ type message struct {
 	Flow      string `json:"flow"`
 	Protocol  string `json:"protocol"`
 	Direction string `json:"direction"`
-	EgmId     string `json:"egmId"`
+	EgmID     string `json:"egmId"`
 	Payload   string `json:"payload"`
 }
 
@@ -50,6 +50,8 @@ func packetCapture(result chan<- *message) {
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 
 	for packet := range packetSource.Packets() {
+		var flowStr, directionStr, protocolStr, payloadStr, egmIDStr string
+
 		if err := packet.ErrorLayer(); err != nil {
 			log.Println("Error decoding some part of the packet:", err)
 			continue
@@ -58,36 +60,26 @@ func packetCapture(result chan<- *message) {
 			continue
 		}
 
-		networkFlow := packet.NetworkLayer().NetworkFlow()
-		transportFlow := packet.TransportLayer().TransportFlow()
-		flowString := networkFlow.Src().String() +
-			":" + transportFlow.Src().String() +
-			" -> " + networkFlow.Dst().String() +
-			":" + transportFlow.Dst().String()
-
 		if packet.TransportLayer().LayerType() == layers.LayerTypeUDP {
 			payload := packet.TransportLayer().(*layers.UDP).Payload
-
-			if fmt.Sprintf("%x", payload[0:1]) == "a4" {
-				egmID, err := strconv.ParseInt(fmt.Sprintf("%x", payload[17:21]), 16, 32)
-				if err != nil {
-					continue
-				}
-				direction := ""
-				if networkFlow.Dst().String() == "172.20.109.41" {
-					direction = "Outbound"
-				} else {
-					direction = "Inbound"
-				}
-
-				result <- &message{
-					Flow:      flowString,
-					Protocol:  "Freeform",
-					Direction: direction,
-					EgmId:     fmt.Sprintf("%d", egmID),
-					Payload:   fmt.Sprintf("%x", payload),
-				}
+			if fmt.Sprintf("%x", payload[0:1]) != "a4" {
+				continue
 			}
+
+			egmID, err := strconv.ParseInt(fmt.Sprintf("%x", payload[17:21]), 16, 32)
+			if err != nil {
+				continue
+			}
+
+			if packet.NetworkLayer().NetworkFlow().Dst().String() == "172.20.109.41" {
+				directionStr = "Outbound"
+			} else {
+				directionStr = "Inbound"
+			}
+
+			protocolStr = "Freeform"
+			egmIDStr = fmt.Sprintf("%d", egmID)
+			payloadStr = fmt.Sprintf("%x", payload)
 		}
 
 		if packet.TransportLayer().LayerType() == layers.LayerTypeTCP {
@@ -95,40 +87,51 @@ func packetCapture(result chan<- *message) {
 				continue
 			}
 
-			key := flowString
+			key := packet.NetworkLayer().NetworkFlow().String()
 			buffer[key] = append(buffer[key], packet.ApplicationLayer().Payload()...)
 
-			if packet.TransportLayer().(*layers.TCP).PSH {
-				startTagIndex := startTagRegex.FindIndex(buffer[key])
-				endTagIndex := endTagRegex.FindIndex(buffer[key])
-
-				if startTagIndex != nil && endTagIndex != nil {
-					payload := buffer[key][startTagIndex[1]:endTagIndex[0]]
-
-					egmID := []byte{}
-					if regexMatch := egmIDRegex.Find(payload); regexMatch != nil {
-						egmID = regexMatch[7 : len(regexMatch)-1]
-					}
-
-					direction := ""
-					if networkFlow.Src().String() == "172.20.109.46" {
-						direction = "Outbound"
-					} else {
-						direction = "Inbound"
-					}
-
-					result <- &message{
-						Flow:      flowString,
-						Protocol:  "G2S",
-						Direction: direction,
-						EgmId:     string(egmID),
-						Payload:   string(payload),
-					}
-				}
-
-				delete(buffer, key)
+			if !packet.TransportLayer().(*layers.TCP).PSH {
+				continue
 			}
 
+			assembledData := buffer[key]
+			delete(buffer, key)
+
+			startTagIndex := startTagRegex.FindIndex(assembledData)
+			endTagIndex := endTagRegex.FindIndex(assembledData)
+			if startTagIndex == nil || endTagIndex == nil {
+				continue
+			}
+
+			payload := assembledData[startTagIndex[1]:endTagIndex[0]]
+
+			egmID := []byte{}
+			if regexMatch := egmIDRegex.Find(payload); regexMatch != nil {
+				egmID = regexMatch[7 : len(regexMatch)-1]
+			}
+
+			if packet.NetworkLayer().NetworkFlow().Src().String() == "172.20.109.46" {
+				directionStr = "Outbound"
+			} else {
+				directionStr = "Inbound"
+			}
+
+			protocolStr = "G2S"
+			egmIDStr = string(egmID)
+			payloadStr = string(payload)
+		}
+
+		flowStr = packet.NetworkLayer().NetworkFlow().Src().String() +
+			":" + packet.TransportLayer().TransportFlow().Src().String() +
+			" -> " + packet.NetworkLayer().NetworkFlow().Dst().String() +
+			":" + packet.TransportLayer().TransportFlow().Dst().String()
+
+		result <- &message{
+			Flow:      flowStr,
+			Protocol:  protocolStr,
+			Direction: directionStr,
+			EgmID:     egmIDStr,
+			Payload:   payloadStr,
 		}
 	}
 }
