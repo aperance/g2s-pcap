@@ -13,7 +13,7 @@ function Message({ message, filters }) {
   }, [message.raw.egmId, filters.egmId]);
 
   useLayoutEffect(() => {
-    hljs.highlightBlock(rootEl.current);
+    if (rootEl.current) hljs.highlightBlock(rootEl.current);
   }, [message, visible]);
 
   return (
