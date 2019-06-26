@@ -14,7 +14,7 @@ import { Toolbar } from "./components/Toolbar";
 function App() {
   const [state, dispatch] = useReducer(reducer, {
     messages: [],
-    filters: { egmId: "" }
+    filters: { egmId: "", general: "" }
   });
   const ref = useAutoScroll(state);
   useWebsocket(dispatch);
@@ -56,12 +56,12 @@ function reducer(state, action) {
         return { ...state };
       }
     case "setFilter":
-      return { ...state, filters: { egmId: action.data } };
-    case "clearState":
       return {
-        messages: [],
-        filters: { egmId: "" }
+        ...state,
+        filters: { ...state.filters, [action.name]: action.data }
       };
+    case "clearState":
+      return { ...state, messages: [] };
     default:
       throw new Error();
   }

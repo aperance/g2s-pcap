@@ -8,7 +8,18 @@ function Toolbar({ dispatch }) {
         type="text"
         id="id"
         name="id"
-        onChange={e => dispatch({ type: "setFilter", data: e.target.value })}
+        onChange={e =>
+          dispatch({ type: "setFilter", name: "egmId", data: e.target.value })
+        }
+      />
+      <label htmlFor="search">SEARCH</label>
+      <input
+        type="text"
+        id="search"
+        name="search"
+        onChange={e =>
+          dispatch({ type: "setFilter", name: "general", data: e.target.value })
+        }
       />
     </div>
   );

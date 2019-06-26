@@ -5,12 +5,15 @@ hljs.registerLanguage("xml", xml);
 import "highlight.js/styles/atom-one-dark-reasonable.css";
 
 function Message({ message, filters }) {
-  const [visible, setVisible] = useState(true);
+  const [visible, setVisible] = useState(false);
   const rootEl = useRef(null);
 
   useEffect(() => {
-    setVisible(message.raw.egmId.includes(filters.egmId));
-  }, [message.raw.egmId, filters.egmId]);
+    setVisible(
+      message.raw.egmId.includes(filters.egmId) &&
+        message.formattedMessage.includes(filters.general)
+    );
+  }, [message.raw.egmId, filters.egmId, filters.general]);
 
   useLayoutEffect(() => {
     if (rootEl.current) hljs.highlightBlock(rootEl.current);
